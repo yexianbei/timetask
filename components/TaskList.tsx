@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { formatTime, formatDuration, formatCurrency, calculateCost } from '@/lib/utils';
+import { useState, useRef, useEffect } from 'react';
+import { formatTime } from '@/lib/utils';
 import type { Task } from '@/types';
 
 interface TaskListProps {
@@ -13,6 +13,15 @@ interface TaskListProps {
   onStartTracking: (task: Task) => void;
 }
 
+interface TaskLayout {
+  task: Task;
+  top: number;
+  height: number;
+  left: number;
+  width: number;
+  row: number;
+}
+
 export default function TaskList({
   tasks,
   selectedDate,
@@ -21,7 +30,12 @@ export default function TaskList({
   onTaskDelete,
   onStartTracking,
 }: TaskListProps) {
-  const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [dragType, setDragType] = useState<'start' | 'end' | null>(null);
+  const [dragStartY, setDragStartY] = useState<number>(0);
+  const [dragStartTime, setDragStartTime] = useState<Date | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const taskRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // 筛选当天的任务
   const filteredTasks = tasks.filter(task => {
@@ -44,9 +58,6 @@ export default function TaskList({
     return duration < 24;
   });
 
-  // 生成时间轴（8:00 - 23:00）
-  const hours = Array.from({ length: 16 }, (_, i) => i + 8);
-
   // 计算任务在时间轴上的位置
   const getTaskPosition = (task: Task) => {
     const startHour = task.startTime.getHours();
@@ -54,7 +65,6 @@ export default function TaskList({
     const endHour = task.endTime.getHours();
     const endMinute = task.endTime.getMinutes();
     
-    // 计算从8:00开始的分钟数
     const startMinutes = (startHour - 8) * 60 + startMinute;
     const endMinutes = (endHour - 8) * 60 + endMinute;
     const duration = endMinutes - startMinutes;
@@ -62,8 +72,178 @@ export default function TaskList({
     return { startMinutes, duration };
   };
 
+  // 检测任务重叠并计算布局
+  const calculateTaskLayouts = (tasks: Task[]): TaskLayout[] => {
+    const layouts: TaskLayout[] = [];
+    const rows: Task[][] = [];
+
+    tasks.forEach(task => {
+      const { startMinutes, duration } = getTaskPosition(task);
+      const endMinutes = startMinutes + duration;
+
+      // 找到可以放置的行
+      let placed = false;
+      for (let i = 0; i < rows.length; i++) {
+        const canPlace = rows[i].every(existingTask => {
+          const existing = getTaskPosition(existingTask);
+          const existingEnd = existing.startMinutes + existing.duration;
+          // 检查是否重叠
+          return endMinutes <= existing.startMinutes || startMinutes >= existingEnd;
+        });
+
+        if (canPlace) {
+          rows[i].push(task);
+          layouts.push({
+            task,
+            top: startMinutes,
+            height: duration,
+            left: (i / rows.length) * 100,
+            width: 100 / rows.length,
+            row: i,
+          });
+          placed = true;
+          break;
+        }
+      }
+
+      // 如果没有找到合适的行，创建新行
+      if (!placed) {
+        rows.push([task]);
+        layouts.push({
+          task,
+          top: startMinutes,
+          height: duration,
+          left: 0,
+          width: 100 / rows.length,
+          row: rows.length - 1,
+        });
+        // 重新计算所有任务的宽度
+        layouts.forEach(layout => {
+          layout.width = 100 / rows.length;
+          layout.left = (layout.row / rows.length) * 100;
+        });
+      }
+    });
+
+    return layouts;
+  };
+
+  const taskLayouts = calculateTaskLayouts(timedTasks);
+
   const handleTaskClick = (task: Task) => {
-    onTaskClick(task);
+    if (!editingTaskId) {
+      onTaskClick(task);
+    }
+  };
+
+  // 长按检测
+  const handleLongPressStart = (task: Task, e: React.MouseEvent | React.TouchEvent) => {
+    longPressTimerRef.current = setTimeout(() => {
+      setEditingTaskId(task.id);
+    }, 500); // 500ms长按
+  };
+
+  const handleLongPressEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  // 拖动开始
+  const handleDragStart = (task: Task, type: 'start' | 'end', e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    setEditingTaskId(task.id);
+    setDragType(type);
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    setDragStartY(clientY);
+    setDragStartTime(type === 'start' ? new Date(task.startTime) : new Date(task.endTime));
+  };
+
+  // 拖动中
+  const handleDrag = (e: MouseEvent | TouchEvent) => {
+    if (!dragType || !editingTaskId || !dragStartTime) return;
+
+    const task = timedTasks.find(t => t.id === editingTaskId);
+    if (!task) return;
+
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const deltaY = clientY - dragStartY;
+    // 每12像素 = 5分钟（60分钟/小时，每像素1分钟，每5分钟一个单位）
+    const minutesDelta = Math.round(deltaY / 12) * 5;
+    const timeDelta = minutesDelta * 60 * 1000; // 转换为毫秒
+
+    const newTime = new Date(dragStartTime.getTime() + timeDelta);
+
+    // 确保时间合理
+    if (dragType === 'start') {
+      if (newTime >= task.endTime) return; // 开始时间不能晚于结束时间
+      const updatedTask: Task = {
+        ...task,
+        startTime: newTime,
+        updatedAt: new Date(),
+      };
+      onTaskUpdate(updatedTask);
+    } else {
+      if (newTime <= task.startTime) return; // 结束时间不能早于开始时间
+      const updatedTask: Task = {
+        ...task,
+        endTime: newTime,
+        updatedAt: new Date(),
+      };
+      onTaskUpdate(updatedTask);
+    }
+  };
+
+  // 拖动结束
+  const handleDragEnd = () => {
+    setDragType(null);
+    setDragStartY(0);
+    setDragStartTime(null);
+  };
+
+  useEffect(() => {
+    if (dragType) {
+      document.addEventListener('mousemove', handleDrag as any);
+      document.addEventListener('mouseup', handleDragEnd);
+      document.addEventListener('touchmove', handleDrag as any);
+      document.addEventListener('touchend', handleDragEnd);
+
+      return () => {
+        document.removeEventListener('mousemove', handleDrag as any);
+        document.removeEventListener('mouseup', handleDragEnd);
+        document.removeEventListener('touchmove', handleDrag as any);
+        document.removeEventListener('touchend', handleDragEnd);
+      };
+    }
+  }, [dragType, editingTaskId, dragStartY, dragStartTime]);
+
+  // 点击外部退出编辑模式
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (editingTaskId && !dragType) {
+        const target = e.target as HTMLElement;
+        const taskElement = taskRefs.current.get(editingTaskId);
+        if (taskElement && !taskElement.contains(target)) {
+          setEditingTaskId(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [editingTaskId, dragType]);
+
+  // 生成时间轴（8:00 - 23:00）
+  const hours = Array.from({ length: 16 }, (_, i) => i + 8);
+
+  // 获取时间调整提示
+  const getTimeAdjustmentHint = (task: Task) => {
+    if (editingTaskId !== task.id || !dragType) return null;
+    const time = dragType === 'start' ? task.startTime : task.endTime;
+    const hours = time.getHours();
+    const minutes = Math.round(time.getMinutes() / 5) * 5;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -93,6 +273,9 @@ export default function TaskList({
                   {task.description && (
                     <div className="text-xs text-gray-600 mt-0.5 truncate">{task.description}</div>
                   )}
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatTime(task.startTime)}-{formatTime(task.endTime)}
+                  </div>
                 </div>
               </div>
               <button
@@ -116,7 +299,6 @@ export default function TaskList({
 
       {/* 时间轴视图 */}
       <div className="relative">
-        {/* 时间轴 */}
         <div className="px-4 py-2">
           {hours.map((hour) => (
             <div key={hour} className="flex items-start border-b border-gray-100">
@@ -125,62 +307,88 @@ export default function TaskList({
               </div>
               <div className="flex-1 relative min-h-[60px]">
                 {/* 任务条 */}
-                {timedTasks
-                  .filter(task => {
-                    const taskStartHour = task.startTime.getHours();
-                    const taskEndHour = task.endTime.getHours();
-                    // 任务在当前小时或跨越当前小时
-                    return (taskStartHour <= hour && taskEndHour >= hour) || 
-                           (taskStartHour === hour) ||
-                           (taskStartHour < hour && taskEndHour > hour);
+                {taskLayouts
+                  .filter(layout => {
+                    const taskStartHour = layout.task.startTime.getHours();
+                    return taskStartHour === hour;
                   })
-                  .map((task) => {
-                    const { startMinutes, duration } = getTaskPosition(task);
-                    const taskStartHour = task.startTime.getHours();
-                    const taskEndHour = task.endTime.getHours();
+                  .map((layout) => {
+                    const { task } = layout;
                     const taskStartMinute = task.startTime.getMinutes();
-                    
-                    // 只在任务开始的这一小时显示
-                    if (taskStartHour === hour) {
-                      const topOffset = taskStartMinute; // 分钟数作为像素偏移
-                      const height = Math.max((duration / 60) * 60, 40); // 转换为像素高度
-                      
-                      const taskColor = task.color || '#8b5cf6';
-                      
-                      return (
-                        <div
-                          key={task.id}
-                          className="absolute left-0 right-2 rounded-lg p-2 hover:opacity-80 transition-opacity z-10"
-                          style={{
-                            top: `${topOffset}px`,
-                            height: `${height}px`,
-                            minHeight: '40px',
-                            backgroundColor: `${taskColor}40`,
-                            borderLeft: `3px solid ${taskColor}`,
-                          }}
-                        >
-                          <div className="flex items-start gap-2 h-full">
-                            <div
-                              onClick={() => handleTaskClick(task)}
-                              className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer"
-                            >
-                              <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: taskColor }}>
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-800 truncate">
-                                  {task.title}
-                                </div>
-                                {task.description && (
-                                  <div className="text-xs text-gray-600 truncate mt-0.5">
-                                    {task.description}
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-600 mt-0.5">
-                                  {formatTime(task.startTime)}-{formatTime(task.endTime)}
-                                </div>
+                    const isEditing = editingTaskId === task.id;
+                    const taskColor = task.color || '#8b5cf6';
+                    const hint = getTimeAdjustmentHint(task);
+
+                    return (
+                      <div
+                        key={task.id}
+                        ref={(el) => {
+                          if (el) taskRefs.current.set(task.id, el);
+                        }}
+                        onMouseDown={(e) => handleLongPressStart(task, e)}
+                        onMouseUp={handleLongPressEnd}
+                        onMouseLeave={handleLongPressEnd}
+                        onTouchStart={(e) => handleLongPressStart(task, e)}
+                        onTouchEnd={handleLongPressEnd}
+                        className="absolute rounded-lg p-2 cursor-pointer z-10"
+                        style={{
+                          top: `${taskStartMinute}px`,
+                          height: `${Math.max(layout.height, 40)}px`,
+                          minHeight: '40px',
+                          left: `${layout.left}%`,
+                          width: `${layout.width - 2}%`,
+                          backgroundColor: isEditing ? taskColor : `${taskColor}40`,
+                          borderLeft: `3px solid ${taskColor}`,
+                        }}
+                      >
+                        {/* 拖动点 - 左上角 */}
+                        {isEditing && (
+                          <div
+                            onMouseDown={(e) => handleDragStart(task, 'start', e)}
+                            onTouchStart={(e) => handleDragStart(task, 'start', e)}
+                            className="absolute -top-1 -left-1 w-3 h-3 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20"
+                            style={{ borderColor: taskColor }}
+                          />
+                        )}
+
+                        {/* 拖动点 - 右上角 */}
+                        {isEditing && (
+                          <div
+                            onMouseDown={(e) => handleDragStart(task, 'end', e)}
+                            onTouchStart={(e) => handleDragStart(task, 'end', e)}
+                            className="absolute -top-1 -right-1 w-3 h-3 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20"
+                            style={{ borderColor: taskColor }}
+                          />
+                        )}
+
+                        <div className="flex items-start gap-2 h-full">
+                          <div
+                            onClick={() => !isEditing && handleTaskClick(task)}
+                            className="flex items-start gap-2 flex-1 min-w-0"
+                          >
+                            <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: isEditing ? '#fff' : taskColor }}>
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-sm font-medium truncate ${isEditing ? 'text-white' : 'text-gray-800'}`}>
+                                {task.title}
                               </div>
+                              {task.description && (
+                                <div className={`text-xs truncate mt-0.5 ${isEditing ? 'text-white opacity-90' : 'text-gray-600'}`}>
+                                  {task.description}
+                                </div>
+                              )}
+                              <div className={`text-xs mt-0.5 ${isEditing ? 'text-white opacity-90' : 'text-gray-600'}`}>
+                                {formatTime(task.startTime)}-{formatTime(task.endTime)}
+                              </div>
+                              {hint && (
+                                <div className="text-xs text-white opacity-75 mt-1">
+                                  调整至: {hint}
+                                </div>
+                              )}
                             </div>
+                          </div>
+                          {!isEditing && (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -194,11 +402,10 @@ export default function TaskList({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                             </button>
-                          </div>
+                          )}
                         </div>
-                      );
-                    }
-                    return null;
+                      </div>
+                    );
                   })}
               </div>
             </div>
