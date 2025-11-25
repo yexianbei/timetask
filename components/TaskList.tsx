@@ -75,22 +75,40 @@ export default function TaskList({
           {allDayTasks.map((task) => (
             <div
               key={task.id}
-              onClick={() => handleTaskClick(task)}
-              className="flex items-center gap-2 mb-2 p-2 rounded-lg cursor-pointer hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2 mb-2 p-2 rounded-lg hover:opacity-80 transition-opacity"
               style={{
                 backgroundColor: task.color ? `${task.color}20` : '#f3e8ff',
               }}
             >
               <div
-                className="w-1 h-6 rounded-full flex-shrink-0"
-                style={{ backgroundColor: task.color || '#8b5cf6' }}
-              />
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-800">{task.title}</div>
-                {task.description && (
-                  <div className="text-xs text-gray-600 mt-0.5 truncate">{task.description}</div>
-                )}
+                onClick={() => handleTaskClick(task)}
+                className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+              >
+                <div
+                  className="w-1 h-6 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: task.color || '#8b5cf6' }}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-800">{task.title}</div>
+                  {task.description && (
+                    <div className="text-xs text-gray-600 mt-0.5 truncate">{task.description}</div>
+                  )}
+                </div>
               </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartTracking(task);
+                }}
+                className="flex-shrink-0 px-3 py-1.5 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-xs font-medium flex items-center gap-1"
+                title="开始专注"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>专注</span>
+              </button>
             </div>
           ))}
         </div>
@@ -132,8 +150,7 @@ export default function TaskList({
                       return (
                         <div
                           key={task.id}
-                          onClick={() => handleTaskClick(task)}
-                          className="absolute left-0 right-2 rounded-lg p-2 cursor-pointer hover:opacity-80 transition-opacity z-10"
+                          className="absolute left-0 right-2 rounded-lg p-2 hover:opacity-80 transition-opacity z-10"
                           style={{
                             top: `${topOffset}px`,
                             height: `${height}px`,
@@ -143,22 +160,40 @@ export default function TaskList({
                           }}
                         >
                           <div className="flex items-start gap-2 h-full">
-                            <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: taskColor }}>
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-800 truncate">
-                                {task.title}
-                              </div>
-                              {task.description && (
-                                <div className="text-xs text-gray-600 truncate mt-0.5">
-                                  {task.description}
+                            <div
+                              onClick={() => handleTaskClick(task)}
+                              className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer"
+                            >
+                              <svg className="w-3 h-3 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: taskColor }}>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium text-gray-800 truncate">
+                                  {task.title}
                                 </div>
-                              )}
-                              <div className="text-xs text-gray-600 mt-0.5">
-                                {formatTime(task.startTime)}-{formatTime(task.endTime)}
+                                {task.description && (
+                                  <div className="text-xs text-gray-600 truncate mt-0.5">
+                                    {task.description}
+                                  </div>
+                                )}
+                                <div className="text-xs text-gray-600 mt-0.5">
+                                  {formatTime(task.startTime)}-{formatTime(task.endTime)}
+                                </div>
                               </div>
                             </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStartTracking(task);
+                              }}
+                              className="flex-shrink-0 px-2 py-1 bg-primary-500 text-white rounded hover:bg-primary-600 transition-colors text-xs font-medium flex items-center gap-1"
+                              title="开始专注"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
                       );
