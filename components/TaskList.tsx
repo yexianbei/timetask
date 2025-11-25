@@ -31,11 +31,13 @@ export default function TaskList({
   onStartTracking,
 }: TaskListProps) {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [dragType, setDragType] = useState<'start' | 'end' | null>(null);
+  const [dragType, setDragType] = useState<'start' | 'end' | 'move' | null>(null);
   const [dragStartY, setDragStartY] = useState<number>(0);
   const [dragStartTime, setDragStartTime] = useState<Date | null>(null);
+  const [dragStartEndTime, setDragStartEndTime] = useState<Date | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const taskRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const isDraggingRef = useRef<boolean>(false);
 
   // 筛选当天的任务
   const filteredTasks = tasks.filter(task => {
@@ -140,55 +142,87 @@ export default function TaskList({
   const handleLongPressStart = (task: Task, e: React.MouseEvent | React.TouchEvent) => {
     longPressTimerRef.current = setTimeout(() => {
       setEditingTaskId(task.id);
-    }, 500); // 500ms长按
+      setDragType('move');
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      setDragStartY(clientY);
+      setDragStartTime(new Date(task.startTime));
+      setDragStartEndTime(new Date(task.endTime));
+      isDraggingRef.current = true;
+    }, 300); // 300ms长按，更快响应
   };
 
   const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) {
+    if (longPressTimerRef.current && !isDraggingRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
   };
 
-  // 拖动开始
+  // 拖动开始（拖动点）
   const handleDragStart = (task: Task, type: 'start' | 'end', e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
+    e.preventDefault();
     setEditingTaskId(task.id);
     setDragType(type);
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     setDragStartY(clientY);
-    setDragStartTime(type === 'start' ? new Date(task.startTime) : new Date(task.endTime));
+    setDragStartTime(new Date(task.startTime));
+    setDragStartEndTime(new Date(task.endTime));
+    isDraggingRef.current = true;
   };
 
   // 拖动中
   const handleDrag = (e: MouseEvent | TouchEvent) => {
-    if (!dragType || !editingTaskId || !dragStartTime) return;
+    if (!dragType || !editingTaskId || !dragStartTime || !dragStartEndTime) return;
 
     const task = timedTasks.find(t => t.id === editingTaskId);
     if (!task) return;
 
+    e.preventDefault();
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const deltaY = clientY - dragStartY;
-    // 每12像素 = 5分钟（60分钟/小时，每像素1分钟，每5分钟一个单位）
-    const minutesDelta = Math.round(deltaY / 12) * 5;
+    
+    // 每12像素 = 5分钟，使用更精确的计算，让拖动更丝滑
+    // 时间轴每60像素代表1小时（60分钟），所以每像素 = 1分钟
+    // 每12像素 = 12分钟，但我们想要每5分钟一个步进
+    const pixelsPerMinute = 1; // 每像素 = 1分钟
+    const minutesDelta = Math.round(deltaY / pixelsPerMinute / 5) * 5; // 四舍五入到5分钟的倍数
     const timeDelta = minutesDelta * 60 * 1000; // 转换为毫秒
 
-    const newTime = new Date(dragStartTime.getTime() + timeDelta);
+    if (dragType === 'move') {
+      // 整体拖动：同时移动开始和结束时间
+      const newStartTime = new Date(dragStartTime.getTime() + timeDelta);
+      const duration = dragStartEndTime.getTime() - dragStartTime.getTime();
+      const newEndTime = new Date(newStartTime.getTime() + duration);
 
-    // 确保时间合理
-    if (dragType === 'start') {
-      if (newTime >= task.endTime) return; // 开始时间不能晚于结束时间
       const updatedTask: Task = {
         ...task,
-        startTime: newTime,
+        startTime: newStartTime,
+        endTime: newEndTime,
         updatedAt: new Date(),
       };
       onTaskUpdate(updatedTask);
-    } else {
-      if (newTime <= task.startTime) return; // 结束时间不能早于开始时间
+    } else if (dragType === 'start') {
+      // 拖动开始时间点：往上（deltaY < 0）时间更早，往下（deltaY > 0）时间更晚
+      const newStartTime = new Date(dragStartTime.getTime() + timeDelta);
+      
+      if (newStartTime >= dragStartEndTime) return; // 开始时间不能晚于结束时间
+      
       const updatedTask: Task = {
         ...task,
-        endTime: newTime,
+        startTime: newStartTime,
+        updatedAt: new Date(),
+      };
+      onTaskUpdate(updatedTask);
+    } else if (dragType === 'end') {
+      // 拖动结束时间点：往上（deltaY < 0）时间更早，往下（deltaY > 0）时间更晚
+      const newEndTime = new Date(dragStartEndTime.getTime() + timeDelta);
+      
+      if (newEndTime <= dragStartTime) return; // 结束时间不能早于开始时间
+      
+      const updatedTask: Task = {
+        ...task,
+        endTime: newEndTime,
         updatedAt: new Date(),
       };
       onTaskUpdate(updatedTask);
@@ -200,6 +234,14 @@ export default function TaskList({
     setDragType(null);
     setDragStartY(0);
     setDragStartTime(null);
+    setDragStartEndTime(null);
+    isDraggingRef.current = false;
+    // 延迟退出编辑模式，让用户看到最终结果
+    setTimeout(() => {
+      if (!isDraggingRef.current) {
+        setEditingTaskId(null);
+      }
+    }, 200);
   };
 
   useEffect(() => {
@@ -216,7 +258,7 @@ export default function TaskList({
         document.removeEventListener('touchend', handleDragEnd);
       };
     }
-  }, [dragType, editingTaskId, dragStartY, dragStartTime]);
+  }, [dragType, editingTaskId, dragStartY, dragStartTime, dragStartEndTime, timedTasks]);
 
   // 点击外部退出编辑模式
   useEffect(() => {
@@ -240,6 +282,9 @@ export default function TaskList({
   // 获取时间调整提示
   const getTimeAdjustmentHint = (task: Task) => {
     if (editingTaskId !== task.id || !dragType) return null;
+    if (dragType === 'move') {
+      return `${formatTime(task.startTime)} - ${formatTime(task.endTime)}`;
+    }
     const time = dragType === 'start' ? task.startTime : task.endTime;
     const hours = time.getHours();
     const minutes = Math.round(time.getMinutes() / 5) * 5;
@@ -325,12 +370,25 @@ export default function TaskList({
                         ref={(el) => {
                           if (el) taskRefs.current.set(task.id, el);
                         }}
-                        onMouseDown={(e) => handleLongPressStart(task, e)}
+                        onMouseDown={(e) => {
+                          // 如果点击的是拖动点，不触发长按
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('[class*="cursor-ns-resize"]')) {
+                            handleLongPressStart(task, e);
+                          }
+                        }}
                         onMouseUp={handleLongPressEnd}
                         onMouseLeave={handleLongPressEnd}
-                        onTouchStart={(e) => handleLongPressStart(task, e)}
+                        onTouchStart={(e) => {
+                          const target = e.target as HTMLElement;
+                          if (!target.closest('[class*="cursor-ns-resize"]')) {
+                            handleLongPressStart(task, e);
+                          }
+                        }}
                         onTouchEnd={handleLongPressEnd}
-                        className="absolute rounded-lg p-2 cursor-pointer z-10"
+                        className={`absolute rounded-lg p-2 z-10 transition-all ${
+                          isEditing && dragType === 'move' ? 'cursor-move' : 'cursor-pointer'
+                        }`}
                         style={{
                           top: `${taskStartMinute}px`,
                           height: `${Math.max(layout.height, 40)}px`,
@@ -341,23 +399,25 @@ export default function TaskList({
                           borderLeft: `3px solid ${taskColor}`,
                         }}
                       >
-                        {/* 拖动点 - 左上角 */}
+                        {/* 拖动点 - 顶部（控制开始时间） */}
                         {isEditing && (
                           <div
                             onMouseDown={(e) => handleDragStart(task, 'start', e)}
                             onTouchStart={(e) => handleDragStart(task, 'start', e)}
-                            className="absolute -top-1 -left-1 w-3 h-3 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20"
+                            className="absolute -top-1.5 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20 shadow-md"
                             style={{ borderColor: taskColor }}
+                            title="拖动调整开始时间"
                           />
                         )}
 
-                        {/* 拖动点 - 右上角 */}
+                        {/* 拖动点 - 底部（控制结束时间） */}
                         {isEditing && (
                           <div
                             onMouseDown={(e) => handleDragStart(task, 'end', e)}
                             onTouchStart={(e) => handleDragStart(task, 'end', e)}
-                            className="absolute -top-1 -right-1 w-3 h-3 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20"
+                            className="absolute -bottom-1.5 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-white border-2 border-gray-400 rounded-full cursor-ns-resize z-20 shadow-md"
                             style={{ borderColor: taskColor }}
+                            title="拖动调整结束时间"
                           />
                         )}
 
