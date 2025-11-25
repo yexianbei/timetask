@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import Calendar from '@/components/Calendar';
 import TaskList from '@/components/TaskList';
 import TaskModal from '@/components/TaskModal';
+import ScheduleModal from '@/components/ScheduleModal';
 import TimeTracker from '@/components/TimeTracker';
 import CaseManagement from '@/components/CaseManagement';
 import Statistics from '@/components/Statistics';
 import InviteEmployee from '@/components/InviteEmployee';
 import { getCurrentWeek } from '@/lib/utils';
+import { getTasksInDateRange } from '@/lib/repeat';
 import type { Task, TimeEntry, User } from '@/types';
 import { 
   getTasks, 
@@ -29,6 +31,7 @@ export default function Home() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [trackingTask, setTrackingTask] = useState<Task | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'calendar' | 'cases' | 'statistics' | 'invite'>('calendar');
 
   useEffect(() => {
@@ -43,8 +46,20 @@ export default function Home() {
     // 初始化示例数据
     initializeSampleData();
     // 加载任务
-    setTasks(getTasks());
-  }, [router]);
+    loadTasks();
+  }, [router, selectedDate]);
+
+  const loadTasks = () => {
+    const allTasks = getTasks();
+    // 获取当前选中日期前后各30天的任务实例
+    const startDate = new Date(selectedDate);
+    startDate.setDate(startDate.getDate() - 30);
+    const endDate = new Date(selectedDate);
+    endDate.setDate(endDate.getDate() + 30);
+    
+    const tasksWithInstances = getTasksInDateRange(allTasks, startDate, endDate);
+    setTasks(tasksWithInstances);
+  };
 
   const handleLogout = () => {
     logoutUser();
@@ -53,7 +68,12 @@ export default function Home() {
 
   const handleTaskSave = (task: Task) => {
     saveTask(task);
-    setTasks(getTasks());
+    loadTasks();
+  };
+
+  const handleScheduleSave = (task: Task) => {
+    saveTask(task);
+    loadTasks();
   };
 
   const handleTaskDelete = (taskId: string) => {
@@ -88,7 +108,7 @@ export default function Home() {
 
   const handleCreateTask = () => {
     setSelectedTask(null);
-    setShowTaskModal(true);
+    setShowScheduleModal(true);
   };
 
   if (!user) {
@@ -188,7 +208,7 @@ export default function Home() {
               selectedDate={selectedDate}
               onTaskClick={(task) => {
                 setSelectedTask(task);
-                setShowTaskModal(true);
+                setShowScheduleModal(true);
               }}
               onTaskUpdate={handleTaskSave}
               onTaskDelete={handleTaskDelete}
@@ -245,6 +265,19 @@ export default function Home() {
             setSelectedTask(null);
           }}
           onSave={handleTaskSave}
+        />
+      )}
+
+      {/* 日程创建/编辑模态框 */}
+      {showScheduleModal && (
+        <ScheduleModal
+          task={selectedTask}
+          selectedDate={selectedDate}
+          onClose={() => {
+            setShowScheduleModal(false);
+            setSelectedTask(null);
+          }}
+          onSave={handleScheduleSave}
         />
       )}
 
