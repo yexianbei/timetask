@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { formatDate, getCurrentWeek, isToday, type WeekCalendar } from '@/lib/utils';
-import type { Task } from '@/types';
+import { formatDate, getCurrentWeek, isToday } from '@/lib/utils';
+import type { Task, WeekCalendar } from '@/types';
 
 interface CalendarProps {
   selectedDate: Date;
