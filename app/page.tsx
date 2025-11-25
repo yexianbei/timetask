@@ -175,21 +175,12 @@ export default function Home() {
       {/* 主内容区 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'calendar' && (
-          <div>
-            <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-3xl font-bold text-gray-800">日历视图</h2>
-              <button
-                onClick={handleCreateTask}
-                className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
-              >
-                新建任务
-              </button>
-            </div>
-
+          <div className="flex flex-col h-[calc(100vh-4rem)]">
             <Calendar
               selectedDate={selectedDate}
               onDateSelect={setSelectedDate}
               tasks={tasks}
+              onCreateTask={handleCreateTask}
             />
 
             <TaskList
@@ -203,6 +194,32 @@ export default function Home() {
               onTaskDelete={handleTaskDelete}
               onStartTracking={handleStartTracking}
             />
+
+            {/* 底部导航栏 */}
+            <div className="bg-white border-t border-gray-200 px-4 py-3 flex items-center justify-around">
+              <button
+                onClick={() => setSelectedDate(new Date())}
+                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm font-medium"
+              >
+                今天
+              </button>
+              <button
+                onClick={() => setActiveTab('calendar')}
+                className="p-2 text-gray-600 hover:text-primary-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setActiveTab('cases')}
+                className="p-2 text-gray-600 hover:text-primary-600"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
 

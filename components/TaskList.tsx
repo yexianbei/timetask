@@ -21,9 +21,9 @@ export default function TaskList({
   onTaskDelete,
   onStartTracking,
 }: TaskListProps) {
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [dragStartIndex, setDragStartIndex] = useState<number | null>(null);
 
+  // 筛选当天的任务
   const filteredTasks = tasks.filter(task => {
     const taskDate = new Date(task.startTime);
     return (
@@ -33,133 +33,135 @@ export default function TaskList({
     );
   }).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-  const handleTimeChange = (task: Task, field: 'startTime' | 'endTime', value: string) => {
-    const [hours, minutes] = value.split(':').map(Number);
-    const newDate = new Date(task[field]);
-    newDate.setHours(hours, minutes, 0, 0);
+  // 分离全天任务和定时任务
+  const allDayTasks = filteredTasks.filter(task => {
+    const duration = (task.endTime.getTime() - task.startTime.getTime()) / (1000 * 60 * 60);
+    return duration >= 24;
+  });
+
+  const timedTasks = filteredTasks.filter(task => {
+    const duration = (task.endTime.getTime() - task.startTime.getTime()) / (1000 * 60 * 60);
+    return duration < 24;
+  });
+
+  // 生成时间轴（8:00 - 23:00）
+  const hours = Array.from({ length: 16 }, (_, i) => i + 8);
+
+  // 计算任务在时间轴上的位置
+  const getTaskPosition = (task: Task) => {
+    const startHour = task.startTime.getHours();
+    const startMinute = task.startTime.getMinutes();
+    const endHour = task.endTime.getHours();
+    const endMinute = task.endTime.getMinutes();
     
-    const updatedTask = {
-      ...task,
-      [field]: newDate,
-      updatedAt: new Date(),
-    };
+    // 计算从8:00开始的分钟数
+    const startMinutes = (startHour - 8) * 60 + startMinute;
+    const endMinutes = (endHour - 8) * 60 + endMinute;
+    const duration = endMinutes - startMinutes;
     
-    // 确保结束时间晚于开始时间
-    if (field === 'startTime' && updatedTask.endTime <= updatedTask.startTime) {
-      updatedTask.endTime = new Date(updatedTask.startTime.getTime() + 3600000); // 默认1小时
-    }
-    if (field === 'endTime' && updatedTask.endTime <= updatedTask.startTime) {
-      updatedTask.startTime = new Date(updatedTask.endTime.getTime() - 3600000);
-    }
-    
-    onTaskUpdate(updatedTask);
+    return { startMinutes, duration };
   };
 
-  const handleDragStart = (index: number) => {
-    setDragStartIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-  };
-
-  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
-    e.preventDefault();
-    if (dragStartIndex === null || dragStartIndex === dropIndex) return;
-
-    const draggedTask = filteredTasks[dragStartIndex];
-    const targetTask = filteredTasks[dropIndex];
-    
-    // 计算时间差
-    const timeDiff = targetTask.startTime.getTime() - draggedTask.startTime.getTime();
-    const duration = draggedTask.endTime.getTime() - draggedTask.startTime.getTime();
-    
-    const updatedTask: Task = {
-      ...draggedTask,
-      startTime: new Date(draggedTask.startTime.getTime() + timeDiff),
-      endTime: new Date(draggedTask.startTime.getTime() + timeDiff + duration),
-      updatedAt: new Date(),
-    };
-    
-    onTaskUpdate(updatedTask);
-    setDragStartIndex(null);
-  };
-
-  const getTaskDuration = (task: Task) => {
-    return (task.endTime.getTime() - task.startTime.getTime()) / 1000;
+  const handleTaskClick = (task: Task) => {
+    onTaskClick(task);
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-4">
-      <h2 className="text-xl font-bold mb-4 text-gray-800">
-        {selectedDate.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })} 的任务
-      </h2>
-      
-      {filteredTasks.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">
-          今天还没有任务
+    <div className="bg-white flex-1 overflow-y-auto">
+      {/* 全天任务 */}
+      {allDayTasks.length > 0 && (
+        <div className="px-4 py-3 border-b border-gray-200">
+          <div className="text-xs font-medium text-gray-500 mb-2">全天</div>
+          {allDayTasks.map((task) => (
+            <div
+              key={task.id}
+              onClick={() => handleTaskClick(task)}
+              className="flex items-center gap-2 mb-2 p-2 bg-purple-50 rounded-lg cursor-pointer hover:bg-purple-100"
+            >
+              <svg className="w-4 h-4 text-purple-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-sm text-gray-800">{task.title}</span>
+            </div>
+          ))}
         </div>
-      ) : (
-        <div className="space-y-2">
-          {filteredTasks.map((task, index) => {
-            const duration = getTaskDuration(task);
-            const cost = calculateCost(duration, task.hourlyRate);
-            
-            return (
-              <div
-                key={task.id}
-                draggable
-                onDragStart={() => handleDragStart(index)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={(e) => handleDrop(e, index)}
-                className={`
-                  p-4 border rounded-lg cursor-move transition-all
-                  ${task.status === 'in-progress' 
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 hover:border-primary-300'
-                  }
-                `}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-800 mb-2">{task.title}</h3>
-                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                      <span>{formatTime(task.startTime)} - {formatTime(task.endTime)}</span>
-                      <span>时长: {formatDuration(duration)}</span>
-                      <span>费率: {formatCurrency(task.hourlyRate)}/小时</span>
-                      <span className="font-medium text-primary-600">
-                        费用: {formatCurrency(cost)}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex gap-2 ml-4">
-                    <button
-                      onClick={() => onStartTracking(task)}
-                      className="px-3 py-1 bg-primary-500 text-white rounded hover:bg-primary-600 text-sm"
-                    >
-                      开始计时
-                    </button>
-                    <button
-                      onClick={() => onTaskClick(task)}
-                      className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={() => onTaskDelete(task.id)}
-                      className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 text-sm"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
+      )}
+
+      {/* 时间轴视图 */}
+      <div className="relative">
+        {/* 时间轴 */}
+        <div className="px-4 py-2">
+          {hours.map((hour) => (
+            <div key={hour} className="flex items-start border-b border-gray-100">
+              <div className="w-12 flex-shrink-0 pt-1">
+                <div className="text-xs text-gray-500">{hour.toString().padStart(2, '0')}:00</div>
               </div>
-            );
-          })}
+              <div className="flex-1 relative min-h-[60px]">
+                {/* 任务条 */}
+                {timedTasks
+                  .filter(task => {
+                    const taskStartHour = task.startTime.getHours();
+                    const taskEndHour = task.endTime.getHours();
+                    // 任务在当前小时或跨越当前小时
+                    return (taskStartHour <= hour && taskEndHour >= hour) || 
+                           (taskStartHour === hour) ||
+                           (taskStartHour < hour && taskEndHour > hour);
+                  })
+                  .map((task) => {
+                    const { startMinutes, duration } = getTaskPosition(task);
+                    const taskStartHour = task.startTime.getHours();
+                    const taskEndHour = task.endTime.getHours();
+                    const taskStartMinute = task.startTime.getMinutes();
+                    
+                    // 只在任务开始的这一小时显示
+                    if (taskStartHour === hour) {
+                      const topOffset = taskStartMinute; // 分钟数作为像素偏移
+                      const height = Math.max((duration / 60) * 60, 40); // 转换为像素高度
+                      
+                      return (
+                        <div
+                          key={task.id}
+                          onClick={() => handleTaskClick(task)}
+                          className="absolute left-0 right-2 bg-purple-200 rounded-lg p-2 cursor-pointer hover:bg-purple-300 transition-colors z-10"
+                          style={{
+                            top: `${topOffset}px`,
+                            height: `${height}px`,
+                            minHeight: '40px',
+                          }}
+                        >
+                          <div className="flex items-start gap-2 h-full">
+                            <svg className="w-3 h-3 text-purple-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-gray-800 truncate">
+                                {task.title}
+                              </div>
+                              <div className="text-xs text-gray-600">
+                                {formatTime(task.startTime)}-{formatTime(task.endTime)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 空状态 */}
+      {filteredTasks.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+          <svg className="w-12 h-12 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <div className="text-sm">今天还没有任务</div>
         </div>
       )}
     </div>
   );
 }
-
