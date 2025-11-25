@@ -1,11 +1,14 @@
 // 数据存储工具（使用localStorage，生产环境可替换为数据库）
-import type { Task, TimeEntry, Case, Employee } from '@/types';
+import type { Task, TimeEntry, Case, Employee, User, Invitation } from '@/types';
 
 const STORAGE_KEYS = {
   TASKS: 'law_firm_tasks',
   TIME_ENTRIES: 'law_firm_time_entries',
   CASES: 'law_firm_cases',
   EMPLOYEES: 'law_firm_employees',
+  USERS: 'law_firm_users',
+  INVITATIONS: 'law_firm_invitations',
+  CURRENT_USER: 'law_firm_current_user',
 };
 
 // Tasks
@@ -114,6 +117,93 @@ export function saveCase(caseItem: Case): void {
     cases.push(caseItem);
   }
   saveCases(cases);
+}
+
+// Users
+export function getUsers(): User[] {
+  if (typeof window === 'undefined') return [];
+  const data = localStorage.getItem(STORAGE_KEYS.USERS);
+  if (!data) return [];
+  return JSON.parse(data).map((u: any) => ({
+    ...u,
+    createdAt: new Date(u.createdAt),
+  }));
+}
+
+export function saveUsers(users: User[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+}
+
+export function getUser(id: string): User | null {
+  const users = getUsers();
+  return users.find(u => u.id === id) || null;
+}
+
+export function getUserByEmail(email: string): User | null {
+  const users = getUsers();
+  return users.find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
+}
+
+export function saveUser(user: User): void {
+  const users = getUsers();
+  const index = users.findIndex(u => u.id === user.id);
+  if (index >= 0) {
+    users[index] = user;
+  } else {
+    users.push(user);
+  }
+  saveUsers(users);
+}
+
+// Current User Session
+export function getCurrentUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  const userId = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+  if (!userId) return null;
+  return getUser(userId);
+}
+
+export function setCurrentUser(userId: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (userId) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, userId);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+  }
+}
+
+// Invitations
+export function getInvitations(): Invitation[] {
+  if (typeof window === 'undefined') return [];
+  const data = localStorage.getItem(STORAGE_KEYS.INVITATIONS);
+  if (!data) return [];
+  return JSON.parse(data).map((inv: any) => ({
+    ...inv,
+    expiresAt: new Date(inv.expiresAt),
+    createdAt: new Date(inv.createdAt),
+  }));
+}
+
+export function saveInvitations(invitations: Invitation[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.INVITATIONS, JSON.stringify(invitations));
+}
+
+export function getInvitation(token: string): Invitation | null {
+  const invitations = getInvitations();
+  return invitations.find(inv => inv.token === token && !inv.used) || null;
+}
+
+export function saveInvitation(invitation: Invitation): void {
+  const invitations = getInvitations();
+  const index = invitations.findIndex(inv => inv.id === invitation.id);
+  if (index >= 0) {
+    invitations[index] = invitation;
+  } else {
+    invitations.push(invitation);
+  }
+  saveInvitations(invitations);
 }
 
 // Employees

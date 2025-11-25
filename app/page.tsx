@@ -1,14 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Calendar from '@/components/Calendar';
 import TaskList from '@/components/TaskList';
 import TaskModal from '@/components/TaskModal';
 import TimeTracker from '@/components/TimeTracker';
 import CaseManagement from '@/components/CaseManagement';
 import Statistics from '@/components/Statistics';
+import InviteEmployee from '@/components/InviteEmployee';
 import { getCurrentWeek } from '@/lib/utils';
-import type { Task, TimeEntry } from '@/types';
+import type { Task, TimeEntry, User } from '@/types';
 import { 
   getTasks, 
   saveTask, 
@@ -17,21 +19,37 @@ import {
   saveTimeEntry,
   initializeSampleData 
 } from '@/lib/storage';
+import { getCurrentUserSession, logoutUser, isBoss } from '@/lib/auth';
 
 export default function Home() {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [trackingTask, setTrackingTask] = useState<Task | null>(null);
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'calendar' | 'cases' | 'statistics'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'cases' | 'statistics' | 'invite'>('calendar');
 
   useEffect(() => {
+    // 检查登录状态
+    const currentUser = getCurrentUserSession();
+    if (!currentUser) {
+      router.push('/login');
+      return;
+    }
+    setUser(currentUser);
+    
     // 初始化示例数据
     initializeSampleData();
     // 加载任务
     setTasks(getTasks());
-  }, []);
+  }, [router]);
+
+  const handleLogout = () => {
+    logoutUser();
+    router.push('/login');
+  };
 
   const handleTaskSave = (task: Task) => {
     saveTask(task);
@@ -73,6 +91,14 @@ export default function Home() {
     setShowTaskModal(true);
   };
 
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-600">加载中...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* 顶部导航栏 */}
@@ -82,37 +108,65 @@ export default function Home() {
             <div className="flex items-center">
               <h1 className="text-2xl font-bold text-gray-800">律师事务所时间管理系统</h1>
             </div>
-            <div className="flex gap-4">
-              <button
-                onClick={() => setActiveTab('calendar')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === 'calendar'
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                日历视图
-              </button>
-              <button
-                onClick={() => setActiveTab('cases')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === 'cases'
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                案件管理
-              </button>
-              <button
-                onClick={() => setActiveTab('statistics')}
-                className={`px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === 'statistics'
-                    ? 'bg-primary-500 text-white'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                统计面板
-              </button>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setActiveTab('calendar')}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    activeTab === 'calendar'
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  日历视图
+                </button>
+                <button
+                  onClick={() => setActiveTab('cases')}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    activeTab === 'cases'
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  案件管理
+                </button>
+                <button
+                  onClick={() => setActiveTab('statistics')}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    activeTab === 'statistics'
+                      ? 'bg-primary-500 text-white'
+                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                  }`}
+                >
+                  统计面板
+                </button>
+                {isBoss() && (
+                  <button
+                    onClick={() => setActiveTab('invite')}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      activeTab === 'invite'
+                        ? 'bg-primary-500 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    邀请员工
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-3 ml-4 pl-4 border-l border-gray-300">
+                <div className="text-sm text-gray-600">
+                  <span className="font-medium">{user.name}</span>
+                  <span className="ml-2 text-xs px-2 py-1 bg-primary-100 text-primary-700 rounded">
+                    {user.role === 'boss' ? '老板' : '员工'}
+                  </span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="px-3 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
+                >
+                  登出
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -158,6 +212,10 @@ export default function Home() {
 
         {activeTab === 'statistics' && (
           <Statistics />
+        )}
+
+        {activeTab === 'invite' && isBoss() && (
+          <InviteEmployee />
         )}
       </main>
 

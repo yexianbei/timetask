@@ -77,3 +77,26 @@ export interface WeekCalendar {
   sunday: Date;
 }
 
+export type UserRole = 'boss' | 'employee';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  password: string; // 简单存储，生产环境应使用哈希
+  invitedBy?: string; // 邀请人ID（如果是员工）
+  createdAt: Date;
+}
+
+export interface Invitation {
+  id: string;
+  email: string;
+  role: UserRole;
+  invitedBy: string; // 邀请人ID
+  token: string; // 邀请令牌
+  used: boolean;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
