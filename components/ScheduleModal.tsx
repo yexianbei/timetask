@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { formatTime, formatDate } from '@/lib/utils';
 import type { Task, RepeatType, RepeatUnit, RepeatEndType } from '@/types';
 import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
+import TimePicker from './TimePicker';
 
 interface ScheduleModalProps {
   task: Task | null;
@@ -131,7 +132,7 @@ export default function ScheduleModal({ task, selectedDate, onClose, onSave }: S
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-2xl p-6 max-w-2xl w-full mx-4 my-8">
+      <div className="bg-white rounded-lg shadow-2xl p-6 max-w-3xl w-full mx-4 my-8">
         <h2 className="text-2xl font-bold mb-4 text-gray-800">
           {task ? '编辑日程' : '新建日程'}
         </h2>
@@ -176,20 +177,15 @@ export default function ScheduleModal({ task, selectedDate, onClose, onSave }: S
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-base"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                开始时间 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="time"
+              <TimePicker
                 value={formData.startTime}
-                onChange={(e) => setFormData({ ...formData, startTime: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                required
+                onChange={(value) => setFormData({ ...formData, startTime: value })}
+                label="开始时间"
               />
             </div>
           </div>
@@ -204,20 +200,15 @@ export default function ScheduleModal({ task, selectedDate, onClose, onSave }: S
                 type="date"
                 value={formData.endDate}
                 onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-base"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                结束时间 <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="time"
+              <TimePicker
                 value={formData.endTime}
-                onChange={(e) => setFormData({ ...formData, endTime: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-                required
+                onChange={(value) => setFormData({ ...formData, endTime: value })}
+                label="结束时间"
               />
             </div>
           </div>
@@ -321,7 +312,7 @@ export default function ScheduleModal({ task, selectedDate, onClose, onSave }: S
                   type="date"
                   value={formData.endRepeatDate}
                   onChange={(e) => setFormData({ ...formData, endRepeatDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-base"
                   required={formData.endRepeatType === 'date'}
                 />
               )}
