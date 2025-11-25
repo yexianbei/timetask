@@ -140,35 +140,45 @@ export default function TaskList({
 
   // 长按检测
   const handleLongPressStart = (task: Task, e: React.MouseEvent | React.TouchEvent) => {
+    // 如果已经在编辑模式，不重复触发
+    if (editingTaskId === task.id) return;
+    
     longPressTimerRef.current = setTimeout(() => {
       setEditingTaskId(task.id);
-      setDragType('move');
-      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-      setDragStartY(clientY);
-      setDragStartTime(new Date(task.startTime));
-      setDragStartEndTime(new Date(task.endTime));
-      isDraggingRef.current = true;
+      // 长按后不立即进入拖动模式，只是进入编辑模式
+      // 用户需要再次拖动才会进入拖动模式
     }, 300); // 300ms长按，更快响应
   };
 
   const handleLongPressEnd = () => {
-    if (longPressTimerRef.current && !isDraggingRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
+    // 长按结束后不清除定时器，让编辑模式保持
+    // 只有在真正开始拖动时才设置拖动相关状态
   };
 
-  // 拖动开始（拖动点）
-  const handleDragStart = (task: Task, type: 'start' | 'end', e: React.MouseEvent | React.TouchEvent) => {
+  // 拖动开始（拖动点或整体拖动）
+  const handleDragStart = (task: Task, type: 'start' | 'end' | 'move', e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    setEditingTaskId(task.id);
+    
+    // 确保在编辑模式
+    if (editingTaskId !== task.id) {
+      setEditingTaskId(task.id);
+    }
+    
     setDragType(type);
     const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     setDragStartY(clientY);
     setDragStartTime(new Date(task.startTime));
     setDragStartEndTime(new Date(task.endTime));
     isDraggingRef.current = true;
+  };
+
+  // 整体拖动开始（在编辑模式下拖动任务条）
+  const handleTaskDragStart = (task: Task, e: React.MouseEvent | React.TouchEvent) => {
+    // 只有在编辑模式下才能整体拖动
+    if (editingTaskId === task.id) {
+      handleDragStart(task, 'move', e);
+    }
   };
 
   // 拖动中
@@ -263,17 +273,23 @@ export default function TaskList({
   // 点击外部退出编辑模式
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (editingTaskId && !dragType) {
+      if (editingTaskId && !dragType && !isDraggingRef.current) {
         const target = e.target as HTMLElement;
         const taskElement = taskRefs.current.get(editingTaskId);
-        if (taskElement && !taskElement.contains(target)) {
+        // 检查是否点击在任务元素外部，且不是拖动点
+        if (taskElement && !taskElement.contains(target) && !target.closest('[class*="cursor-ns-resize"]')) {
           setEditingTaskId(null);
         }
       }
     };
 
+    // 使用 mousedown 而不是 click，确保能捕获到点击事件
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside as any);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside as any);
+    };
   }, [editingTaskId, dragType]);
 
   // 生成时间轴（8:00 - 23:00）
@@ -374,20 +390,47 @@ export default function TaskList({
                           // 如果点击的是拖动点，不触发长按
                           const target = e.target as HTMLElement;
                           if (!target.closest('[class*="cursor-ns-resize"]')) {
-                            handleLongPressStart(task, e);
+                            if (isEditing) {
+                              // 如果已经在编辑模式，开始整体拖动
+                              handleTaskDragStart(task, e);
+                            } else {
+                              // 否则开始长按检测
+                              handleLongPressStart(task, e);
+                            }
                           }
                         }}
-                        onMouseUp={handleLongPressEnd}
-                        onMouseLeave={handleLongPressEnd}
+                        onMouseUp={(e) => {
+                          // 松手时不退出编辑模式，只清除长按定时器
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          // 离开时不退出编辑模式，只清除长按定时器
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
                         onTouchStart={(e) => {
                           const target = e.target as HTMLElement;
                           if (!target.closest('[class*="cursor-ns-resize"]')) {
-                            handleLongPressStart(task, e);
+                            if (isEditing) {
+                              handleTaskDragStart(task, e);
+                            } else {
+                              handleLongPressStart(task, e);
+                            }
                           }
                         }}
-                        onTouchEnd={handleLongPressEnd}
+                        onTouchEnd={(e) => {
+                          if (longPressTimerRef.current) {
+                            clearTimeout(longPressTimerRef.current);
+                            longPressTimerRef.current = null;
+                          }
+                        }}
                         className={`absolute rounded-lg p-2 z-10 transition-all ${
-                          isEditing && dragType === 'move' ? 'cursor-move' : 'cursor-pointer'
+                          isEditing && dragType === 'move' ? 'cursor-move' : isEditing ? 'cursor-default' : 'cursor-pointer'
                         }`}
                         style={{
                           top: `${taskStartMinute}px`,
